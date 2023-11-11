@@ -2,7 +2,6 @@ package sk.uteg.springdatatest.db.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
-
 import java.util.UUID;
 
 @Entity
@@ -16,4 +15,12 @@ public class Option {
     private Question question;
 
     private String text;
+
+    @Override
+    public String toString() {
+        return "Option{" +
+                "id=" + id +
+                ", text='" + text + '\'' +
+                '}';
+    }
 }
