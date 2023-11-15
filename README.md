@@ -44,7 +44,23 @@ There is import.sql with some dummy data as an example. For this data, it should
 
 # Solution
 Steps that led to desired output:
-1. Repositories extending JpaRepository
+1. Repositories extending JpaRepository and custom queries
+
+Calculating avarage rating
+```sql
+@Query("SELECT AVG(a.ratingValue) FROM Answer a WHERE a.question.id = :questionId AND a.ratingValue > 0")
+    BigDecimal calculateAverageRating(@Param("questionId") UUID questionId);
+```
+
+Calculating occurences of the options
+```sql
+@Query(value = "SELECT \"o\".\"id\", \"o\".\"text\", COUNT(\"aso\".\"option_id\") " +
+            "FROM \"option\" \"o\" " +
+            "LEFT JOIN \"answer_selected_option\" \"aso\" ON \"o\".\"id\" = \"aso\".\"option_id\" " +
+            "WHERE \"o\".\"question_id\" = :questionId " +
+            "GROUP BY \"o\".\"id\", \"o\".\"text\"", nativeQuery = true)
+    List<Object[]> countOptionOccurrences(@Param("questionId") UUID questionId);
+```
 
 2. CampaignService class where we are setting feedbacks and question summaries
 
@@ -92,52 +108,31 @@ List<QuestionSummary> questionSummaries = new ArrayList<>();
 
 5. Answerservice class provides the logic for calculating the average rating for RATING type questions and for counting the occurrences of each option in CHOICE type questions.
 ```java
-   public BigDecimal calculateAverageRating(UUID questionId) {
-
-        List<Answer> answers = answerRepository.findByQuestionId(questionId);
-
-        BigDecimal sum = BigDecimal.ZERO;
-        int count = 0;
-
-        for (Answer answer : answers) {
-            if (answer.getRatingValue() > 0) {
-                sum = sum.add(BigDecimal.valueOf(answer.getRatingValue()));
-                count++;
-            }
+public BigDecimal calculateAverageRating(UUID questionId) {
+        return answerRepository.calculateAverageRating(questionId);
         }
 
-        return (count > 0) ? sum.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
-   }
+public List<OptionSummary> countOptionOccurrences(UUID questionId) {
+        List<Object[]> queryResults = optionRepository.countOptionOccurrences(questionId);
+        List<OptionSummary> optionSummaries = new ArrayList<>();
 
-   public List<OptionSummary> countOptionOccurrences(UUID questionId) {
-   List<Option> options = optionRepository.findByQuestionId(questionId);
-   Map<UUID, OptionSummary> optionCountMap = new HashMap<>();
+        for (Object[] result : queryResults) {
+        String optionText = (String) result[1];
+        int occurrences = ((Number) result[2]).intValue();
 
-        for (Option option : options) {
-            OptionSummary optionSummary = new OptionSummary();
-            optionSummary.setText(option.getText());
-            optionSummary.setOccurrences(0);
-            optionCountMap.put(option.getId(), optionSummary);
+        OptionSummary optionSummary = new OptionSummary();
+        optionSummary.setText(optionText);
+        optionSummary.setOccurrences(occurrences);
+        optionSummaries.add(optionSummary);
         }
 
-        List<Answer> answers = answerRepository.findByQuestionId(questionId);
-
-        for (Answer answer : answers) {
-            for (Option selectedOption : answer.getSelectedOptions()) {
-                OptionSummary optionSummary = optionCountMap.get(selectedOption.getId());
-                if (optionSummary != null) {
-                    optionSummary.setOccurrences(optionSummary.getOccurrences() + 1);
-                }
-            }
-        }
-
-        return new ArrayList<>(optionCountMap.values());
-   }
+        return optionSummaries;
+}
 ```
 
 6. Controller that calls campaignService.
 
-```
+```java
    @GetMapping("/summary/{uuid}")
    public ResponseEntity<CampaignSummary> getSummary(@PathVariable UUID uuid) {
    CampaignSummary summary = campaignService.getCampaignSummary(uuid);
@@ -151,39 +146,38 @@ List<QuestionSummary> questionSummaries = new ArrayList<>();
 
 ```json
 {
-   "totalFeedbacks":3,
-   "questionSummaries":[
-      {
-         "name":"Rating question",
-         "type":"RATING",
-         "ratingAverage":4.00,
-         "optionSummaries":[
-            
-         ]
-      },
-      {
-         "name":"Choice question",
-         "type":"CHOICE",
-         "ratingAverage":0,
-         "optionSummaries":[
-            {
-               "text":"Option 3",
-               "occurrences":0
-            },
-            {
-               "text":"Option 2",
-               "occurrences":3
-            },
-            {
-               "text":"Option 4",
-               "occurrences":2
-            },
-            {
-               "text":"Option 1",
-               "occurrences":1
-            }
-         ]
-      }
-   ]
+  "totalFeedbacks":3,
+  "questionSummaries":[
+    {
+      "name":"Rating question",
+      "type":"RATING",
+      "ratingAverage":4.0,
+      "optionSummaries":[
+      ]
+    },
+    {
+      "name":"Choice question",
+      "type":"CHOICE",
+      "ratingAverage":0,
+      "optionSummaries":[
+        {
+          "text":"Option 1",
+          "occurrences":1
+        },
+        {
+          "text":"Option 2",
+          "occurrences":3
+        },
+        {
+          "text":"Option 3",
+          "occurrences":0
+        },
+        {
+          "text":"Option 4",
+          "occurrences":2
+        }
+      ]
+    }
+  ]
 }
 ```

@@ -4,10 +4,7 @@ import org.springframework.stereotype.Service;
 import sk.uteg.springdatatest.api.model.OptionSummary;
 import sk.uteg.springdatatest.api.repository.AnswerRepository;
 import sk.uteg.springdatatest.api.repository.OptionRepository;
-import sk.uteg.springdatatest.db.model.Answer;
-import sk.uteg.springdatatest.db.model.Option;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
 
 @Service
@@ -22,44 +19,23 @@ public class AnswerService {
     }
 
     public BigDecimal calculateAverageRating(UUID questionId) {
-
-        List<Answer> answers = answerRepository.findByQuestionId(questionId);
-
-        BigDecimal sum = BigDecimal.ZERO;
-        int count = 0;
-
-        for (Answer answer : answers) {
-            if (answer.getRatingValue() > 0) {
-                sum = sum.add(BigDecimal.valueOf(answer.getRatingValue()));
-                count++;
-            }
-        }
-
-        return (count > 0) ? sum.divide(BigDecimal.valueOf(count), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
+        return answerRepository.calculateAverageRating(questionId);
     }
 
     public List<OptionSummary> countOptionOccurrences(UUID questionId) {
-        List<Option> options = optionRepository.findByQuestionId(questionId);
-        Map<UUID, OptionSummary> optionCountMap = new HashMap<>();
+        List<Object[]> queryResults = optionRepository.countOptionOccurrences(questionId);
+        List<OptionSummary> optionSummaries = new ArrayList<>();
 
-        for (Option option : options) {
+        for (Object[] result : queryResults) {
+            String optionText = (String) result[1];
+            int occurrences = ((Number) result[2]).intValue();
+
             OptionSummary optionSummary = new OptionSummary();
-            optionSummary.setText(option.getText());
-            optionSummary.setOccurrences(0);
-            optionCountMap.put(option.getId(), optionSummary);
+            optionSummary.setText(optionText);
+            optionSummary.setOccurrences(occurrences);
+            optionSummaries.add(optionSummary);
         }
 
-        List<Answer> answers = answerRepository.findByQuestionId(questionId);
-
-        for (Answer answer : answers) {
-            for (Option selectedOption : answer.getSelectedOptions()) {
-                OptionSummary optionSummary = optionCountMap.get(selectedOption.getId());
-                if (optionSummary != null) {
-                    optionSummary.setOccurrences(optionSummary.getOccurrences() + 1);
-                }
-            }
-        }
-
-        return new ArrayList<>(optionCountMap.values());
+        return optionSummaries;
     }
 }
